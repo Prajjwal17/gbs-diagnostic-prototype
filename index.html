@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroLink | GBS Diagnostic & NCS Workstation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --medical-blue: #0ea5e9;
+            --medical-dark: #0f172a;
+            --oscilloscope-green: #22c55e;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .oscilloscope-bg { background-color: #020617; }
+        .chart-container { position: relative; width: 100%; height: 350px; }
+        .glass-panel { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 1); }
+        .sidebar-active { border-right: 4px solid var(--medical-blue); background: #f8fafc; color: var(--medical-blue); }
+        input[type="range"] { accent-color: var(--medical-blue); }
+        /* Simulation Animation */
+        @keyframes scanline { 0% { left: 0; } 100% { left: 100%; } }
+        .scanline { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(34, 197, 94, 0.3); animation: scanline 2s linear infinite; }
+    </style>
+    <!-- Chosen Palette: "Neuro-Precision" - Deep Navy backgrounds for signals, stark white for data forms, sky-blue for interactive elements. -->
+    <!-- Application Structure Plan: 
+         1. Dashboard View: Summary of active patients and device status.
+         2. Acquisition View: The "Oscilloscope" for real-time NCS testing simulation.
+         3. Analysis Engine: Input fields for DML, Amplitude, and F-waves that trigger Brighton Criteria logic.
+         4. R&D Log: A technical section detailing the STM32/ADC bridge configuration.
+         This structure mimics a professional medical software suite (e.g., Cadwell or Nihon Kohden interfaces).
+    -->
+    <!-- Visualization & Content Choices:
+         - Live Signal Chart: Chart.js using requestAnimationFrame for smooth "real-time" feel.
+         - Diagnostic Gauges: HTML/CSS status bars for AIDP vs AMAN probability.
+         - Data Table: Filterable patient list for lab technicians.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+<body class="text-slate-800 flex h-screen overflow-hidden">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
+        <div class="p-6 border-b border-slate-100">
+            <h1 class="text-xl font-bold text-slate-900 tracking-tight flex items-center">
+                <span class="p-1.5 bg-sky-600 text-white rounded mr-2 text-xs">NL</span>
+                NeuroLink v1.0
+            </h1>
+            <p class="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-widest">GBS Diagnostic Lab</p>
+        </div>
+        
+        <nav class="flex-1 py-4">
+            <button onclick="switchTab('dashboard')" id="btn-dashboard" class="w-full flex items-center px-6 py-3 text-sm font-semibold sidebar-active transition">
+                <span class="mr-3">⊞</span> Dashboard
+            </button>
+            <button onclick="switchTab('acquisition')" id="btn-acquisition" class="w-full flex items-center px-6 py-3 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition">
+                <span class="mr-3">⚡</span> Live Acquisition
+            </button>
+            <button onclick="switchTab('analysis')" id="btn-analysis" class="w-full flex items-center px-6 py-3 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition">
+                <span class="mr-3">⌬</span> Diagnostic Engine
+            </button>
+            <button onclick="switchTab('records')" id="btn-records" class="w-full flex items-center px-6 py-3 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition">
+                <span class="mr-3">📂</span> Patient Records
+            </button>
+        </nav>
+
+        <div class="p-4 border-t border-slate-100 bg-slate-50">
+            <div class="flex items-center space-x-2">
+                <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span class="text-[10px] font-bold text-slate-500">HW MODULE: DISCONNECTED</span>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-1 italic">Waiting for USB-Serial handshake...</p>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+        
+        <!-- Top Bar -->
+        <header class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
+            <div id="tab-title" class="text-sm font-bold text-slate-600 uppercase tracking-widest">System Overview</div>
+            <div class="flex items-center space-x-4">
+                <span class="text-xs text-slate-400">Collaborator: Dr. [Neurologist Name]</span>
+                <button class="bg-slate-100 p-2 rounded-full hover:bg-slate-200 transition">👤</button>
+            </div>
+        </header>
+
+        <!-- Dynamic Content -->
+        <div class="flex-1 overflow-y-auto p-8" id="content-viewport">
+
+            <!-- TAB: Dashboard -->
+            <div id="tab-dashboard" class="fade-in space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="glass-panel p-6 rounded-xl shadow-sm">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">Total Screenings</h3>
+                        <p class="text-3xl font-bold text-slate-900">12</p>
+                        <p class="text-xs text-emerald-500 mt-1 font-semibold">↑ 3 this week</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-xl shadow-sm border-l-4 border-rose-500">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">Likely GBS (AIDP)</h3>
+                        <p class="text-3xl font-bold text-slate-900">04</p>
+                        <p class="text-xs text-rose-500 mt-1 font-semibold">Action required</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-xl shadow-sm border-l-4 border-sky-500">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">Hardware Health</h3>
+                        <p class="text-3xl font-bold text-slate-900">98%</p>
+                        <p class="text-xs text-slate-400 mt-1">Calibrated 2h ago</p>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-xl overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                        <h3 class="font-bold text-slate-700">Recent Lab Technician Submissions</h3>
+                        <button class="text-xs text-sky-600 font-bold hover:underline">View All</button>
+                    </div>
+                    <table class="w-full text-left text-sm">
+                        <thead>
+                            <tr class="text-slate-400 border-b border-slate-100">
+                                <th class="px-6 py-4">ID</th>
+                                <th class="px-6 py-4">Technician Findings</th>
+                                <th class="px-6 py-4">Primary Metric</th>
+                                <th class="px-6 py-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr>
+                                <td class="px-6 py-4 font-mono text-xs">P-9021</td>
+                                <td class="px-6 py-4">Bilateral leg weakness, 4 days post-onset</td>
+                                <td class="px-6 py-4">DML: 6.2ms</td>
+                                <td class="px-6 py-4"><span class="px-2 py-1 bg-rose-100 text-rose-700 rounded-full text-[10px] font-bold">ALERT: DEMYELINATING</span></td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-mono text-xs">P-9022</td>
+                                <td class="px-6 py-4">Upper limb paresthesia, Areflexia</td>
+                                <td class="px-6 py-4">Amp: 1.2mV</td>
+                                <td class="px-6 py-4"><span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">PENDING REVIEW</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: Acquisition -->
+            <div id="tab-acquisition" class="hidden fade-in space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <!-- Signal Monitor -->
+                    <div class="lg:col-span-3 space-y-4">
+                        <div class="oscilloscope-bg rounded-xl border border-slate-800 p-4 relative overflow-hidden shadow-2xl">
+                            <div class="flex justify-between items-start mb-2 px-2">
+                                <div class="text-[10px] font-mono text-emerald-400 flex items-center">
+                                    <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span>
+                                    LIVE FEED: MEDIAN NERVE (MOTOR)
+                                </div>
+                                <div class="text-[10px] font-mono text-slate-500">20mV / div | 5ms / div</div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="liveChart"></canvas>
+                                <div class="scanline"></div>
+                            </div>
+                        </div>
+
+                        <!-- Controls -->
+                        <div class="glass-panel p-6 rounded-xl flex items-center justify-between">
+                            <div class="flex space-x-4">
+                                <button id="acq-start" onclick="toggleAcquisition()" class="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition flex items-center">
+                                    <span class="mr-2">▶</span> START CAPTURE
+                                </button>
+                                <button class="bg-slate-200 text-slate-600 px-6 py-2 rounded-lg font-bold hover:bg-slate-300 transition">
+                                    ⏹ STOP
+                                </button>
+                            </div>
+                            <div class="flex space-x-6 text-xs font-mono">
+                                <div class="text-center"><p class="text-slate-400">PEAK AMP</p><p class="text-xl font-bold text-emerald-600" id="live-amp">--</p></div>
+                                <div class="text-center"><p class="text-slate-400">LATENCY</p><p class="text-xl font-bold text-sky-600" id="live-lat">--</p></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sidebar Config -->
+                    <div class="space-y-4">
+                        <div class="glass-panel p-4 rounded-xl">
+                            <h4 class="text-[10px] font-bold text-slate-400 uppercase mb-4">Stimulator Settings</h4>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-xs font-semibold block mb-1">Current (mA)</label>
+                                    <input type="range" min="0" max="100" value="40" class="w-full">
+                                    <div class="flex justify-between text-[10px] font-mono mt-1 text-slate-500"><span>0mA</span><span>40mA</span><span>100mA</span></div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold block mb-1">Pulse Width (μs)</label>
+                                    <input type="range" min="50" max="1000" step="50" value="200" class="w-full">
+                                    <div class="flex justify-between text-[10px] font-mono mt-1 text-slate-500"><span>50μs</span><span>200μs</span><span>1ms</span></div>
+                                </div>
+                                <button class="w-full py-2 bg-slate-800 text-white text-xs font-bold rounded-md hover:bg-slate-900 transition">CALIBRATE BASELINE</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Analysis -->
+            <div id="tab-analysis" class="hidden fade-in grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Data Entry -->
+                <div class="glass-panel p-8 rounded-xl shadow-sm">
+                    <h3 class="text-lg font-bold mb-6 flex items-center">
+                        <span class="mr-2">📝</span> NCS Finding Entry
+                    </h3>
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">Distal Motor Latency (ms)</label>
+                                <input type="number" id="input-dml" step="0.1" value="3.5" class="w-full border border-slate-200 rounded p-2 font-mono text-lg focus:ring-2 focus:ring-sky-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">CMAP Amplitude (mV)</label>
+                                <input type="number" id="input-amp" step="0.1" value="6.0" class="w-full border border-slate-200 rounded p-2 font-mono text-lg focus:ring-2 focus:ring-sky-500 outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-slate-500 uppercase block mb-1">F-Wave Latency (ms)</label>
+                            <input type="number" id="input-fwave" step="1" value="28" class="w-full border border-slate-200 rounded p-2 font-mono text-lg focus:ring-2 focus:ring-sky-500 outline-none">
+                        </div>
+                        <div class="flex items-center p-4 bg-sky-50 rounded-lg border border-sky-100">
+                            <input type="checkbox" id="input-blocks" class="w-4 h-4 text-sky-600">
+                            <label for="input-blocks" class="ml-3 text-xs font-semibold text-sky-800">Conduction Blocks / Temporal Dispersion Present?</label>
+                        </div>
+                        <button onclick="calculateDiagnosis()" class="w-full bg-sky-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-sky-700 shadow-lg shadow-sky-200 transition">RUN DIAGNOSTIC ENGINE</button>
+                    </div>
+                </div>
+
+                <!-- Automated Insights -->
+                <div class="space-y-6">
+                    <div class="glass-panel p-8 rounded-xl shadow-sm bg-gradient-to-br from-white to-slate-50">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 tracking-widest">Diagnostic Probability</h3>
+                        
+                        <div class="space-y-8">
+                            <!-- Gauge 1 -->
+                            <div>
+                                <div class="flex justify-between text-xs font-bold mb-2">
+                                    <span>AIDP (Demyelinating)</span>
+                                    <span id="prob-aidp" class="text-sky-600">--%</span>
+                                </div>
+                                <div class="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                                    <div id="bar-aidp" class="h-full bg-sky-500 transition-all duration-1000" style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Gauge 2 -->
+                            <div>
+                                <div class="flex justify-between text-xs font-bold mb-2">
+                                    <span>AMAN / AMSAN (Axonal)</span>
+                                    <span id="prob-axonal" class="text-rose-600">--%</span>
+                                </div>
+                                <div class="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                                    <div id="bar-axonal" class="h-full bg-rose-500 transition-all duration-1000" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="diagnosis-text" class="mt-8 p-4 bg-slate-800 text-white rounded-lg hidden">
+                            <p class="text-[10px] font-mono text-sky-400 uppercase mb-2">Neurologist Insight Suggestion</p>
+                            <p class="text-sm font-semibold" id="insight-content">Based on input metrics, findings strongly correlate with demyelinating subtype (AIDP). Recommend prompt consideration of IVIG.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 bg-amber-50 border border-amber-100 rounded-lg flex">
+                        <span class="text-xl mr-3">💡</span>
+                        <p class="text-xs text-amber-800 italic">"Brighton Level 1 Certainty requires clinical + CSF + NCS data. This tool currently analyzes NCS parameters."</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- JS Logic -->
+    <script>
+        // --- Tab Management ---
+        function switchTab(tabId) {
+            const tabs = ['dashboard', 'acquisition', 'analysis', 'records'];
+            tabs.forEach(t => {
+                document.getElementById('tab-' + t).classList.add('hidden');
+                document.getElementById('btn-' + t).classList.remove('sidebar-active', 'text-sky-600');
+                document.getElementById('btn-' + t).classList.add('text-slate-500');
+            });
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            document.getElementById('btn-' + tabId).classList.add('sidebar-active');
+            document.getElementById('tab-title').textContent = tabId.replace('-', ' ');
+        }
+
+        // --- Live Acquisition Simulator ---
+        let acqRunning = false;
+        let chart;
+        let chartData = Array(100).fill(0);
+        let timeStep = 0;
+
+        const ctx = document.getElementById('liveChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(100).fill(''),
+                datasets: [{
+                    data: chartData,
+                    borderColor: '#22c55e',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: { display: false },
+                    y: { 
+                        min: -10, max: 10,
+                        grid: { color: '#1e293b' },
+                        ticks: { display: false }
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        function toggleAcquisition() {
+            acqRunning = !acqRunning;
+            const btn = document.getElementById('acq-start');
+            btn.innerHTML = acqRunning ? '⏹ STOP CAPTURE' : '▶ START CAPTURE';
+            btn.className = acqRunning ? 'bg-rose-600 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-rose-200 transition' : 'bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-emerald-200 transition';
+            if(acqRunning) animate();
+        }
+
+        function animate() {
+            if(!acqRunning) return;
+            
+            timeStep += 0.1;
+            // Generate pseudo-CMAP on loop
+            let newVal = 0;
+            const phase = (Date.now() / 1000) % 2; // Loop every 2 seconds
+            
+            if(phase > 0.5 && phase < 0.8) {
+                const innerPhase = (phase - 0.5) / 0.3;
+                newVal = 8 * Math.sin(innerPhase * Math.PI * 2) * Math.exp(-innerPhase * 3);
+                document.getElementById('live-amp').innerText = "7.2 mV";
+                document.getElementById('live-lat').innerText = "3.4 ms";
+            } else {
+                newVal = (Math.random() - 0.5) * 0.4; // noise
+            }
+
+            chartData.shift();
+            chartData.push(newVal);
+            chart.update();
+            requestAnimationFrame(animate);
+        }
+
+        // --- Diagnostic Logic (Simplified Brighton/Hadden Criteria) ---
+        function calculateDiagnosis() {
+            const dml = parseFloat(document.getElementById('input-dml').value);
+            const amp = parseFloat(document.getElementById('input-amp').value);
+            const fwave = parseFloat(document.getElementById('input-fwave').value);
+            const blocks = document.getElementById('input-blocks').checked;
+
+            let aidpProb = 0;
+            let axonalProb = 0;
+            let insight = "";
+
+            // Simple weighted logic based on Research Source PDFs
+            // AIDP Criteria: Prolonged DML (>125% ULN), Low Velocity, Prolonged F-waves
+            if (dml > 4.5 || fwave > 35 || blocks) {
+                aidpProb = 85;
+                axonalProb = 10;
+                insight = "High probability of Acute Inflammatory Demyelinating Polyradiculoneuropathy (AIDP). Findings: DML prolongation and possible temporal dispersion.";
+            } 
+            // AMAN Criteria: Reduced amplitude with normal distal latencies
+            else if (amp < 3.0 && dml <= 4.5) {
+                axonalProb = 80;
+                aidpProb = 15;
+                insight = "Primary finding is severe amplitude reduction without latency delay. Suggestive of Axonal subtype (AMAN/AMSAN). Early recovery unlikely.";
+            }
+            else {
+                aidpProb = 5;
+                axonalProb = 5;
+                insight = "Metrics are within borderline range. Serial NCS suggested in 3-5 days to observe disease progression.";
+            }
+
+            // Update UI
+            document.getElementById('prob-aidp').innerText = aidpProb + "%";
+            document.getElementById('bar-aidp').style.width = aidpProb + "%";
+            document.getElementById('prob-axonal').innerText = axonalProb + "%";
+            document.getElementById('bar-axonal').style.width = axonalProb + "%";
+            
+            const diagText = document.getElementById('diagnosis-text');
+            diagText.classList.remove('hidden');
+            document.getElementById('insight-content').innerText = insight;
+        }
+
+    </script>
+</body>
+</html>
